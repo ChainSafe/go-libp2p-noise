@@ -5,12 +5,11 @@
 [![](https://img.shields.io/badge/freenode-%23libp2p-yellow.svg?style=flat-square)](http://webchat.freenode.net/?channels=%23libp2p)
 [![Discourse posts](https://img.shields.io/discourse/https/discuss.libp2p.io/posts.svg)](https://discuss.libp2p.io)
 [![GoDoc](https://godoc.org/github.com/libp2p/go-libp2p-noise?status.svg)](https://godoc.org/github.com/libp2p/go-libp2p-noise)
-[![Build Status](https://travis-ci.org/libp2p/go-libp2p-noise.svg?branch=master)](https://travis-ci.org/libp2p/go-libp2p-noise)
+[![Build Status](https://travis-ci.org/wildmolasses/go-libp2p-noise.svg?branch=master)](https://travis-ci.org/wildmolasses/go-libp2p-noise)
 
 > go-libp2p's noise encrypted transport
 
-Package `go-libp2p-noise` is a libp2p [stream security transport](https://github.com/libp2p/go-stream-security). Connections wrapped by `noise` use secure sessions provided by this package to encrypt all traffic. A noise protocol handshake is used to setup the communication channel. See the [spec]([noise-libp2p spec]: https://github.com/libp2p/specs/blob/master/noise/README.md
-) for more info.
+Package `go-libp2p-noise` is a libp2p [stream security transport](https://github.com/libp2p/go-stream-security). Connections wrapped by `noise` use secure sessions provided by this package to encrypt all traffic. A noise protocol handshake is used to setup the communication channel. See the [noise-libp2p spec](https://github.com/libp2p/specs/blob/master/noise/README.md) for more info.
 
 ## Install
 
