@@ -14,7 +14,7 @@ import (
 	"io"
 	mrand "math/rand"
 	"testing"
-	//"time"
+	"time"
 )
 
 func generateKey(seed int64) (crypto.PrivKey, error) {
@@ -33,7 +33,7 @@ func generateKey(seed int64) (crypto.PrivKey, error) {
 	return priv, nil
 }
 
-func makeNode(t *testing.T, seed int64, port int) (host.Host, error) {
+func makeNode(t *testing.T, seed int64, port int, kp *Keypair) (host.Host, error) {
 	priv, err := generateKey(seed)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func makeNode(t *testing.T, seed int64, port int) (host.Host, error) {
 		t.Fatal(err)
 	}
 
-	tpt := NewTransport(pid, priv, false)
+	tpt := NewTransport(pid, priv, false, kp)
 
 	ip := "0.0.0.0"
 	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", ip, port))
@@ -63,19 +63,50 @@ func makeNode(t *testing.T, seed int64, port int) (host.Host, error) {
 	return libp2p.New(ctx, options...)
 }
 
-func TestLibp2pIntegration(t *testing.T) {
+func makeNodePipes(t *testing.T, seed int64, port int, rpid peer.ID, rpubkey [32]byte, kp *Keypair) (host.Host, error) {
+	priv, err := generateKey(seed)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pid, err := peer.IDFromPrivateKey(priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tpt := NewTransport(pid, priv, true, kp)
+	tpt.NoiseStaticKeyCache = make(map[peer.ID]([32]byte))
+	tpt.NoiseStaticKeyCache[rpid] = rpubkey
+
+	ip := "0.0.0.0"
+	addr, err := ma.NewMultiaddr(fmt.Sprintf("/ip4/%s/tcp/%d", ip, port))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	options := []libp2p.Option{
+		libp2p.Identity(priv),
+		libp2p.Security(ID, tpt),
+		libp2p.ListenAddrs(addr),
+	}
+
 	ctx := context.Background()
 
-	ha, err := makeNode(t, 1, 33333)
+	h, err := libp2p.New(ctx, options...)
+	return h, err
+}
+
+func TestLibp2pIntegration_NoPipes(t *testing.T) {
+	ctx := context.Background()
+
+	ha, err := makeNode(t, 1, 33333, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	defer ha.Close()
 
-	//fmt.Printf("ha: %s/p2p/%s\n", ha.Addrs()[1].String(), ha.ID())
-
-	hb, err := makeNode(t, 2, 34343)
+	hb, err := makeNode(t, 2, 34343, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,17 +133,127 @@ func TestLibp2pIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// stream, err := ha.NewStream(ctx, hb.ID(), ID)
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
+	stream, err := ha.NewStream(ctx, hb.ID(), ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// _, err = stream.Write([]byte("hello\n"))
-	// if err != nil {
-	// 	t.Fatal(err)
-	// }
+	_, err = stream.Write([]byte("hello\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	// fmt.Println("fin")
+	fmt.Println("fin")
+
+	time.Sleep(time.Second)
+}
+
+func TestLibp2pIntegration_WithPipes(t *testing.T) {
+	ctx := context.Background()
+
+	kpa := GenerateKeypair()
+
+	ha, err := makeNodePipes(t, 1, 33333, "", [32]byte{}, kpa)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer ha.Close()
+
+	hb, err := makeNodePipes(t, 2, 34343, ha.ID(), kpa.public_key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer hb.Close()
+
+	ha.SetStreamHandler(ID, handleStream)
+	hb.SetStreamHandler(ID, handleStream)
+
+	addr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", ha.Addrs()[0].String(), ha.ID()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Printf("ha: %s\n", addr)
+
+	addrInfo, err := peer.AddrInfoFromP2pAddr(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = hb.Connect(ctx, *addrInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stream, err := hb.NewStream(ctx, ha.ID(), ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = stream.Write([]byte("hello\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println("fin")
+
+	time.Sleep(time.Second)
+}
+
+func TestLibp2pIntegration_XXFallback(t *testing.T) {
+	ctx := context.Background()
+
+	kpa := GenerateKeypair()
+
+	ha, err := makeNode(t, 1, 33333, kpa)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer ha.Close()
+
+	hb, err := makeNodePipes(t, 2, 34343, ha.ID(), kpa.public_key, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer hb.Close()
+
+	ha.SetStreamHandler(ID, handleStream)
+	hb.SetStreamHandler(ID, handleStream)
+
+	addr, err := ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", hb.Addrs()[0].String(), hb.ID()))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Printf("ha: %s\n", addr)
+
+	addrInfo, err := peer.AddrInfoFromP2pAddr(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = ha.Connect(ctx, *addrInfo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stream, err := hb.NewStream(ctx, ha.ID(), ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = stream.Write([]byte("hello\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	fmt.Println("fin")
+
+	time.Sleep(time.Second)
 }
 
 func handleStream(stream net.Stream) {
@@ -128,5 +269,5 @@ func handleStream(stream net.Stream) {
 		fmt.Println("stream err", err)
 		return
 	}
-	fmt.Println("got msg:", msg)
+	fmt.Printf("got msg: %s", msg)
 }
